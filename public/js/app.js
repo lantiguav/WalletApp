@@ -49468,7 +49468,12 @@ function (_Component) {
                 if (data) {
                   this.setState({
                     transfers: this.state.transfers.concat(data),
-                    money: this.state.money + parseInt(data.amount)
+                    money: this.state.money + parseInt(data.amount),
+                    form: {
+                      description: '',
+                      amount: '',
+                      wallet_id: 1
+                    }
                   });
                 } else {
                   alert('Se ha producido un error');
