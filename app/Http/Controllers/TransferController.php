@@ -23,4 +23,13 @@ class TransferController extends Controller
 
         return response()->json($transfer, 201);
     }
+
+    public function delete(Request $request){
+        try {
+            Transfer::find($request->id)->delete();
+            return response()->json(['success' => true]);
+        } catch (\Throwable $th) {
+            return response()->json(['success' => false]);
+        }
+    }
 }

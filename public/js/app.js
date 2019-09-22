@@ -49308,6 +49308,7 @@ function (_Component) {
     };
     _this.handleChange = _this.handleChange.bind(_assertThisInitialized(_this));
     _this.handleSubmit = _this.handleSubmit.bind(_assertThisInitialized(_this));
+    _this.handleDeleteClick = _this.handleDeleteClick.bind(_assertThisInitialized(_this));
     return _this;
   }
 
@@ -49370,18 +49371,76 @@ function (_Component) {
       console.log(e.target.value);
     }
   }, {
-    key: "handleSubmit",
+    key: "handleDeleteClick",
     value: function () {
-      var _handleSubmit = _asyncToGenerator(
+      var _handleDeleteClick = _asyncToGenerator(
       /*#__PURE__*/
-      _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.mark(function _callee2(e) {
+      _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.mark(function _callee2(transferId, transferAmount) {
         var config, res, data;
         return _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.wrap(function _callee2$(_context2) {
           while (1) {
             switch (_context2.prev = _context2.next) {
               case 0:
+                console.log(transferId);
+                config = {
+                  method: 'POST',
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    'id': transferId
+                  })
+                };
+                res = fetch('api/transfer/delete', config).then(function (res) {
+                  return res.ok ? res.json() : false;
+                })["catch"](function (error) {
+                  return error;
+                });
+                _context2.next = 5;
+                return res;
+
+              case 5:
+                data = _context2.sent;
+
+                if (data) {
+                  this.setState({
+                    transfers: this.state.transfers.filter(function (x) {
+                      return x.id != transferId;
+                    }),
+                    money: this.state.money - transferAmount
+                  });
+                } else {
+                  alert('Se ha producido un error');
+                }
+
+              case 7:
+              case "end":
+                return _context2.stop();
+            }
+          }
+        }, _callee2, this);
+      }));
+
+      function handleDeleteClick(_x, _x2) {
+        return _handleDeleteClick.apply(this, arguments);
+      }
+
+      return handleDeleteClick;
+    }()
+  }, {
+    key: "handleSubmit",
+    value: function () {
+      var _handleSubmit = _asyncToGenerator(
+      /*#__PURE__*/
+      _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.mark(function _callee3(e) {
+        var config, res, data;
+        return _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.wrap(function _callee3$(_context3) {
+          while (1) {
+            switch (_context3.prev = _context3.next) {
+              case 0:
                 e.preventDefault();
-                _context2.prev = 1;
+                _context3.prev = 1;
                 config = {
                   method: 'POST',
                   headers: {
@@ -49390,7 +49449,7 @@ function (_Component) {
                   },
                   body: JSON.stringify(this.state.form)
                 };
-                _context2.next = 5;
+                _context3.next = 5;
                 return fetch('/api/transfer/create', config).then(function (res) {
                   return res.ok ? res.json() : false;
                 })["catch"](function (error) {
@@ -49398,12 +49457,12 @@ function (_Component) {
                 });
 
               case 5:
-                res = _context2.sent;
-                _context2.next = 8;
+                res = _context3.sent;
+                _context3.next = 8;
                 return res;
 
               case 8:
-                data = _context2.sent;
+                data = _context3.sent;
                 console.log('data', data);
 
                 if (data) {
@@ -49415,25 +49474,25 @@ function (_Component) {
                   alert('Se ha producido un error');
                 }
 
-                _context2.next = 16;
+                _context3.next = 16;
                 break;
 
               case 13:
-                _context2.prev = 13;
-                _context2.t0 = _context2["catch"](1);
+                _context3.prev = 13;
+                _context3.t0 = _context3["catch"](1);
                 this.setState({
-                  error: _context2.t0
+                  error: _context3.t0
                 });
 
               case 16:
               case "end":
-                return _context2.stop();
+                return _context3.stop();
             }
           }
-        }, _callee2, this, [[1, 13]]);
+        }, _callee3, this, [[1, 13]]);
       }));
 
-      function handleSubmit(_x) {
+      function handleSubmit(_x3) {
         return _handleSubmit.apply(this, arguments);
       }
 
@@ -49460,7 +49519,8 @@ function (_Component) {
         className: "m-t-md"
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(_TransferList__WEBPACK_IMPORTED_MODULE_4__["default"], {
         transfers: this.state.transfers,
-        onChange: this.handleChange
+        onChange: this.handleChange,
+        onDeleteClick: this.handleDeleteClick
       })));
     }
   }]);
@@ -49541,7 +49601,8 @@ __webpack_require__.r(__webpack_exports__);
 
 
 var TransferList = function TransferList(_ref) {
-  var transfers = _ref.transfers;
+  var transfers = _ref.transfers,
+      onDeleteClick = _ref.onDeleteClick;
   return react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("table", {
     className: "table"
   }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("tbody", null, transfers.map(function (transfer) {
@@ -49549,7 +49610,13 @@ var TransferList = function TransferList(_ref) {
       key: transfer.id
     }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", null, transfer.description), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", {
       className: transfer.amount >= 0 ? 'text-success' : 'text-danger'
-    }, transfer.amount));
+    }, transfer.amount), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
+      className: "btn btn-danger",
+      onClick: function onClick(e) {
+        return onDeleteClick(transfer.id, transfer.amount);
+      },
+      key: 'delete' + transfer.id
+    }, "Delete")));
   })));
 };
 

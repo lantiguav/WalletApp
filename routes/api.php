@@ -19,3 +19,4 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 
 Route::get('/wallet', 'WalletController@index');
 Route::post('/transfer/create', 'TransferController@store');
+Route::post('/transfer/delete', 'TransferController@delete');

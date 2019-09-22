@@ -21,6 +21,7 @@ export default class Example extends Component {
 
         this.handleChange =  this.handleChange.bind(this);
         this.handleSubmit =  this.handleSubmit.bind(this);
+        this.handleDeleteClick =  this.handleDeleteClick.bind(this);
     }
 
     async componentDidMount(){
@@ -47,6 +48,34 @@ export default class Example extends Component {
             }
         })
         console.log(e.target.value);
+    }
+
+    async handleDeleteClick(transferId, transferAmount){
+        console.log(transferId);
+
+        let config = {
+            method : 'POST',
+            headers : {
+                'Accept' : 'application/json',
+                'Content-Type' : 'application/json'
+            },
+            body : JSON.stringify({'id' : transferId})
+        }
+
+        let res = fetch('api/transfer/delete', config)
+                    .then(res => res.ok ? res.json() : false)
+                    .catch(error => error);
+        
+        let data = await res;
+
+        if(data){
+            this.setState({
+                transfers : this.state.transfers.filter(x => x.id != transferId),
+                money : this.state.money - transferAmount
+            });
+        } else {
+            alert('Se ha producido un error');
+        }
     }
 
     async handleSubmit(e){
@@ -93,7 +122,7 @@ export default class Example extends Component {
                     </div>
                 </div>
                 <div className="m-t-md">
-                    <TransferList transfers={this.state.transfers} onChange={this.handleChange}/>
+                    <TransferList transfers={this.state.transfers} onChange={this.handleChange} onDeleteClick={this.handleDeleteClick}/>
                 </div>
             </div>
         );
