@@ -19,10 +19,13 @@ const TransferForm = ({form, onChange, onSubmit}) => (
                 type="text" 
                 className="form-control" 
                 name="amount"
+                placeholder="Amount"
                 value={form.amount}
                 onChange={onChange}/>
         </div>
-        <button type="submit" className="btn btn-primary mb-2">Add</button>
+        <div className="input-group mb-2">
+            <button type="submit" className="btn btn-primary col-12">Add</button>
+        </div>
     </form>
 )
 

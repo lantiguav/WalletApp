@@ -49582,12 +49582,15 @@ var TransferForm = function TransferForm(_ref) {
     type: "text",
     className: "form-control",
     name: "amount",
+    placeholder: "Amount",
     value: form.amount,
     onChange: onChange
-  })), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
+  })), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("div", {
+    className: "input-group mb-2"
+  }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
     type: "submit",
-    className: "btn btn-primary mb-2"
-  }, "Add"));
+    className: "btn btn-primary col-12"
+  }, "Add")));
 };
 
 /* harmony default export */ __webpack_exports__["default"] = (TransferForm);
