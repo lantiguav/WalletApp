@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Validator;
 use Illuminate\Http\Request;
 use App\Transfer;
 use App\Wallet;
@@ -9,6 +10,22 @@ use App\Wallet;
 class TransferController extends Controller
 {
     public function store(Request $request){
+
+        // $validatedData = $request->validate([
+        //     'amount' => 'number|max:999999|required',
+        //     'description' => 'required|max:255',
+        //     'wallet_id' => 'required',
+        // ]);
+
+        // $validator = Validator::make($request->all(), [
+        //     'amount' => 'numeric|max:999999|required',
+        //     'description' => 'required|max:255',
+        //     'wallet_id' => 'required',
+        // ]);
+
+        // if ($validator->fails()) {
+        //     return response()->json(['error' => $validator]);
+        // }
 
         $wallet = Wallet::find($request->wallet_id);
         $wallet->money = $wallet->money + $request->amount;

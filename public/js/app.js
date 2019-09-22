@@ -19390,6 +19390,635 @@ module.exports = checkPropTypes;
 
 /***/ }),
 
+/***/ "./node_modules/prop-types/factoryWithTypeCheckers.js":
+/*!************************************************************!*\
+  !*** ./node_modules/prop-types/factoryWithTypeCheckers.js ***!
+  \************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+
+
+var ReactIs = __webpack_require__(/*! react-is */ "./node_modules/react-is/index.js");
+var assign = __webpack_require__(/*! object-assign */ "./node_modules/object-assign/index.js");
+
+var ReactPropTypesSecret = __webpack_require__(/*! ./lib/ReactPropTypesSecret */ "./node_modules/prop-types/lib/ReactPropTypesSecret.js");
+var checkPropTypes = __webpack_require__(/*! ./checkPropTypes */ "./node_modules/prop-types/checkPropTypes.js");
+
+var has = Function.call.bind(Object.prototype.hasOwnProperty);
+var printWarning = function() {};
+
+if (true) {
+  printWarning = function(text) {
+    var message = 'Warning: ' + text;
+    if (typeof console !== 'undefined') {
+      console.error(message);
+    }
+    try {
+      // --- Welcome to debugging React ---
+      // This error was thrown as a convenience so that you can use this stack
+      // to find the callsite that caused this warning to fire.
+      throw new Error(message);
+    } catch (x) {}
+  };
+}
+
+function emptyFunctionThatReturnsNull() {
+  return null;
+}
+
+module.exports = function(isValidElement, throwOnDirectAccess) {
+  /* global Symbol */
+  var ITERATOR_SYMBOL = typeof Symbol === 'function' && Symbol.iterator;
+  var FAUX_ITERATOR_SYMBOL = '@@iterator'; // Before Symbol spec.
+
+  /**
+   * Returns the iterator method function contained on the iterable object.
+   *
+   * Be sure to invoke the function with the iterable as context:
+   *
+   *     var iteratorFn = getIteratorFn(myIterable);
+   *     if (iteratorFn) {
+   *       var iterator = iteratorFn.call(myIterable);
+   *       ...
+   *     }
+   *
+   * @param {?object} maybeIterable
+   * @return {?function}
+   */
+  function getIteratorFn(maybeIterable) {
+    var iteratorFn = maybeIterable && (ITERATOR_SYMBOL && maybeIterable[ITERATOR_SYMBOL] || maybeIterable[FAUX_ITERATOR_SYMBOL]);
+    if (typeof iteratorFn === 'function') {
+      return iteratorFn;
+    }
+  }
+
+  /**
+   * Collection of methods that allow declaration and validation of props that are
+   * supplied to React components. Example usage:
+   *
+   *   var Props = require('ReactPropTypes');
+   *   var MyArticle = React.createClass({
+   *     propTypes: {
+   *       // An optional string prop named "description".
+   *       description: Props.string,
+   *
+   *       // A required enum prop named "category".
+   *       category: Props.oneOf(['News','Photos']).isRequired,
+   *
+   *       // A prop named "dialog" that requires an instance of Dialog.
+   *       dialog: Props.instanceOf(Dialog).isRequired
+   *     },
+   *     render: function() { ... }
+   *   });
+   *
+   * A more formal specification of how these methods are used:
+   *
+   *   type := array|bool|func|object|number|string|oneOf([...])|instanceOf(...)
+   *   decl := ReactPropTypes.{type}(.isRequired)?
+   *
+   * Each and every declaration produces a function with the same signature. This
+   * allows the creation of custom validation functions. For example:
+   *
+   *  var MyLink = React.createClass({
+   *    propTypes: {
+   *      // An optional string or URI prop named "href".
+   *      href: function(props, propName, componentName) {
+   *        var propValue = props[propName];
+   *        if (propValue != null && typeof propValue !== 'string' &&
+   *            !(propValue instanceof URI)) {
+   *          return new Error(
+   *            'Expected a string or an URI for ' + propName + ' in ' +
+   *            componentName
+   *          );
+   *        }
+   *      }
+   *    },
+   *    render: function() {...}
+   *  });
+   *
+   * @internal
+   */
+
+  var ANONYMOUS = '<<anonymous>>';
+
+  // Important!
+  // Keep this list in sync with production version in `./factoryWithThrowingShims.js`.
+  var ReactPropTypes = {
+    array: createPrimitiveTypeChecker('array'),
+    bool: createPrimitiveTypeChecker('boolean'),
+    func: createPrimitiveTypeChecker('function'),
+    number: createPrimitiveTypeChecker('number'),
+    object: createPrimitiveTypeChecker('object'),
+    string: createPrimitiveTypeChecker('string'),
+    symbol: createPrimitiveTypeChecker('symbol'),
+
+    any: createAnyTypeChecker(),
+    arrayOf: createArrayOfTypeChecker,
+    element: createElementTypeChecker(),
+    elementType: createElementTypeTypeChecker(),
+    instanceOf: createInstanceTypeChecker,
+    node: createNodeChecker(),
+    objectOf: createObjectOfTypeChecker,
+    oneOf: createEnumTypeChecker,
+    oneOfType: createUnionTypeChecker,
+    shape: createShapeTypeChecker,
+    exact: createStrictShapeTypeChecker,
+  };
+
+  /**
+   * inlined Object.is polyfill to avoid requiring consumers ship their own
+   * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
+   */
+  /*eslint-disable no-self-compare*/
+  function is(x, y) {
+    // SameValue algorithm
+    if (x === y) {
+      // Steps 1-5, 7-10
+      // Steps 6.b-6.e: +0 != -0
+      return x !== 0 || 1 / x === 1 / y;
+    } else {
+      // Step 6.a: NaN == NaN
+      return x !== x && y !== y;
+    }
+  }
+  /*eslint-enable no-self-compare*/
+
+  /**
+   * We use an Error-like object for backward compatibility as people may call
+   * PropTypes directly and inspect their output. However, we don't use real
+   * Errors anymore. We don't inspect their stack anyway, and creating them
+   * is prohibitively expensive if they are created too often, such as what
+   * happens in oneOfType() for any type before the one that matched.
+   */
+  function PropTypeError(message) {
+    this.message = message;
+    this.stack = '';
+  }
+  // Make `instanceof Error` still work for returned errors.
+  PropTypeError.prototype = Error.prototype;
+
+  function createChainableTypeChecker(validate) {
+    if (true) {
+      var manualPropTypeCallCache = {};
+      var manualPropTypeWarningCount = 0;
+    }
+    function checkType(isRequired, props, propName, componentName, location, propFullName, secret) {
+      componentName = componentName || ANONYMOUS;
+      propFullName = propFullName || propName;
+
+      if (secret !== ReactPropTypesSecret) {
+        if (throwOnDirectAccess) {
+          // New behavior only for users of `prop-types` package
+          var err = new Error(
+            'Calling PropTypes validators directly is not supported by the `prop-types` package. ' +
+            'Use `PropTypes.checkPropTypes()` to call them. ' +
+            'Read more at http://fb.me/use-check-prop-types'
+          );
+          err.name = 'Invariant Violation';
+          throw err;
+        } else if ( true && typeof console !== 'undefined') {
+          // Old behavior for people using React.PropTypes
+          var cacheKey = componentName + ':' + propName;
+          if (
+            !manualPropTypeCallCache[cacheKey] &&
+            // Avoid spamming the console because they are often not actionable except for lib authors
+            manualPropTypeWarningCount < 3
+          ) {
+            printWarning(
+              'You are manually calling a React.PropTypes validation ' +
+              'function for the `' + propFullName + '` prop on `' + componentName  + '`. This is deprecated ' +
+              'and will throw in the standalone `prop-types` package. ' +
+              'You may be seeing this warning due to a third-party PropTypes ' +
+              'library. See https://fb.me/react-warning-dont-call-proptypes ' + 'for details.'
+            );
+            manualPropTypeCallCache[cacheKey] = true;
+            manualPropTypeWarningCount++;
+          }
+        }
+      }
+      if (props[propName] == null) {
+        if (isRequired) {
+          if (props[propName] === null) {
+            return new PropTypeError('The ' + location + ' `' + propFullName + '` is marked as required ' + ('in `' + componentName + '`, but its value is `null`.'));
+          }
+          return new PropTypeError('The ' + location + ' `' + propFullName + '` is marked as required in ' + ('`' + componentName + '`, but its value is `undefined`.'));
+        }
+        return null;
+      } else {
+        return validate(props, propName, componentName, location, propFullName);
+      }
+    }
+
+    var chainedCheckType = checkType.bind(null, false);
+    chainedCheckType.isRequired = checkType.bind(null, true);
+
+    return chainedCheckType;
+  }
+
+  function createPrimitiveTypeChecker(expectedType) {
+    function validate(props, propName, componentName, location, propFullName, secret) {
+      var propValue = props[propName];
+      var propType = getPropType(propValue);
+      if (propType !== expectedType) {
+        // `propValue` being instance of, say, date/regexp, pass the 'object'
+        // check, but we can offer a more precise error message here rather than
+        // 'of type `object`'.
+        var preciseType = getPreciseType(propValue);
+
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type ' + ('`' + preciseType + '` supplied to `' + componentName + '`, expected ') + ('`' + expectedType + '`.'));
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createAnyTypeChecker() {
+    return createChainableTypeChecker(emptyFunctionThatReturnsNull);
+  }
+
+  function createArrayOfTypeChecker(typeChecker) {
+    function validate(props, propName, componentName, location, propFullName) {
+      if (typeof typeChecker !== 'function') {
+        return new PropTypeError('Property `' + propFullName + '` of component `' + componentName + '` has invalid PropType notation inside arrayOf.');
+      }
+      var propValue = props[propName];
+      if (!Array.isArray(propValue)) {
+        var propType = getPropType(propValue);
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type ' + ('`' + propType + '` supplied to `' + componentName + '`, expected an array.'));
+      }
+      for (var i = 0; i < propValue.length; i++) {
+        var error = typeChecker(propValue, i, componentName, location, propFullName + '[' + i + ']', ReactPropTypesSecret);
+        if (error instanceof Error) {
+          return error;
+        }
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createElementTypeChecker() {
+    function validate(props, propName, componentName, location, propFullName) {
+      var propValue = props[propName];
+      if (!isValidElement(propValue)) {
+        var propType = getPropType(propValue);
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type ' + ('`' + propType + '` supplied to `' + componentName + '`, expected a single ReactElement.'));
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createElementTypeTypeChecker() {
+    function validate(props, propName, componentName, location, propFullName) {
+      var propValue = props[propName];
+      if (!ReactIs.isValidElementType(propValue)) {
+        var propType = getPropType(propValue);
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type ' + ('`' + propType + '` supplied to `' + componentName + '`, expected a single ReactElement type.'));
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createInstanceTypeChecker(expectedClass) {
+    function validate(props, propName, componentName, location, propFullName) {
+      if (!(props[propName] instanceof expectedClass)) {
+        var expectedClassName = expectedClass.name || ANONYMOUS;
+        var actualClassName = getClassName(props[propName]);
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type ' + ('`' + actualClassName + '` supplied to `' + componentName + '`, expected ') + ('instance of `' + expectedClassName + '`.'));
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createEnumTypeChecker(expectedValues) {
+    if (!Array.isArray(expectedValues)) {
+      if (true) {
+        if (arguments.length > 1) {
+          printWarning(
+            'Invalid arguments supplied to oneOf, expected an array, got ' + arguments.length + ' arguments. ' +
+            'A common mistake is to write oneOf(x, y, z) instead of oneOf([x, y, z]).'
+          );
+        } else {
+          printWarning('Invalid argument supplied to oneOf, expected an array.');
+        }
+      }
+      return emptyFunctionThatReturnsNull;
+    }
+
+    function validate(props, propName, componentName, location, propFullName) {
+      var propValue = props[propName];
+      for (var i = 0; i < expectedValues.length; i++) {
+        if (is(propValue, expectedValues[i])) {
+          return null;
+        }
+      }
+
+      var valuesString = JSON.stringify(expectedValues, function replacer(key, value) {
+        var type = getPreciseType(value);
+        if (type === 'symbol') {
+          return String(value);
+        }
+        return value;
+      });
+      return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of value `' + String(propValue) + '` ' + ('supplied to `' + componentName + '`, expected one of ' + valuesString + '.'));
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createObjectOfTypeChecker(typeChecker) {
+    function validate(props, propName, componentName, location, propFullName) {
+      if (typeof typeChecker !== 'function') {
+        return new PropTypeError('Property `' + propFullName + '` of component `' + componentName + '` has invalid PropType notation inside objectOf.');
+      }
+      var propValue = props[propName];
+      var propType = getPropType(propValue);
+      if (propType !== 'object') {
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type ' + ('`' + propType + '` supplied to `' + componentName + '`, expected an object.'));
+      }
+      for (var key in propValue) {
+        if (has(propValue, key)) {
+          var error = typeChecker(propValue, key, componentName, location, propFullName + '.' + key, ReactPropTypesSecret);
+          if (error instanceof Error) {
+            return error;
+          }
+        }
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createUnionTypeChecker(arrayOfTypeCheckers) {
+    if (!Array.isArray(arrayOfTypeCheckers)) {
+       true ? printWarning('Invalid argument supplied to oneOfType, expected an instance of array.') : undefined;
+      return emptyFunctionThatReturnsNull;
+    }
+
+    for (var i = 0; i < arrayOfTypeCheckers.length; i++) {
+      var checker = arrayOfTypeCheckers[i];
+      if (typeof checker !== 'function') {
+        printWarning(
+          'Invalid argument supplied to oneOfType. Expected an array of check functions, but ' +
+          'received ' + getPostfixForTypeWarning(checker) + ' at index ' + i + '.'
+        );
+        return emptyFunctionThatReturnsNull;
+      }
+    }
+
+    function validate(props, propName, componentName, location, propFullName) {
+      for (var i = 0; i < arrayOfTypeCheckers.length; i++) {
+        var checker = arrayOfTypeCheckers[i];
+        if (checker(props, propName, componentName, location, propFullName, ReactPropTypesSecret) == null) {
+          return null;
+        }
+      }
+
+      return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` supplied to ' + ('`' + componentName + '`.'));
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createNodeChecker() {
+    function validate(props, propName, componentName, location, propFullName) {
+      if (!isNode(props[propName])) {
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` supplied to ' + ('`' + componentName + '`, expected a ReactNode.'));
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createShapeTypeChecker(shapeTypes) {
+    function validate(props, propName, componentName, location, propFullName) {
+      var propValue = props[propName];
+      var propType = getPropType(propValue);
+      if (propType !== 'object') {
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type `' + propType + '` ' + ('supplied to `' + componentName + '`, expected `object`.'));
+      }
+      for (var key in shapeTypes) {
+        var checker = shapeTypes[key];
+        if (!checker) {
+          continue;
+        }
+        var error = checker(propValue, key, componentName, location, propFullName + '.' + key, ReactPropTypesSecret);
+        if (error) {
+          return error;
+        }
+      }
+      return null;
+    }
+    return createChainableTypeChecker(validate);
+  }
+
+  function createStrictShapeTypeChecker(shapeTypes) {
+    function validate(props, propName, componentName, location, propFullName) {
+      var propValue = props[propName];
+      var propType = getPropType(propValue);
+      if (propType !== 'object') {
+        return new PropTypeError('Invalid ' + location + ' `' + propFullName + '` of type `' + propType + '` ' + ('supplied to `' + componentName + '`, expected `object`.'));
+      }
+      // We need to check all keys in case some are required but missing from
+      // props.
+      var allKeys = assign({}, props[propName], shapeTypes);
+      for (var key in allKeys) {
+        var checker = shapeTypes[key];
+        if (!checker) {
+          return new PropTypeError(
+            'Invalid ' + location + ' `' + propFullName + '` key `' + key + '` supplied to `' + componentName + '`.' +
+            '\nBad object: ' + JSON.stringify(props[propName], null, '  ') +
+            '\nValid keys: ' +  JSON.stringify(Object.keys(shapeTypes), null, '  ')
+          );
+        }
+        var error = checker(propValue, key, componentName, location, propFullName + '.' + key, ReactPropTypesSecret);
+        if (error) {
+          return error;
+        }
+      }
+      return null;
+    }
+
+    return createChainableTypeChecker(validate);
+  }
+
+  function isNode(propValue) {
+    switch (typeof propValue) {
+      case 'number':
+      case 'string':
+      case 'undefined':
+        return true;
+      case 'boolean':
+        return !propValue;
+      case 'object':
+        if (Array.isArray(propValue)) {
+          return propValue.every(isNode);
+        }
+        if (propValue === null || isValidElement(propValue)) {
+          return true;
+        }
+
+        var iteratorFn = getIteratorFn(propValue);
+        if (iteratorFn) {
+          var iterator = iteratorFn.call(propValue);
+          var step;
+          if (iteratorFn !== propValue.entries) {
+            while (!(step = iterator.next()).done) {
+              if (!isNode(step.value)) {
+                return false;
+              }
+            }
+          } else {
+            // Iterator will provide entry [k,v] tuples rather than values.
+            while (!(step = iterator.next()).done) {
+              var entry = step.value;
+              if (entry) {
+                if (!isNode(entry[1])) {
+                  return false;
+                }
+              }
+            }
+          }
+        } else {
+          return false;
+        }
+
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function isSymbol(propType, propValue) {
+    // Native Symbol.
+    if (propType === 'symbol') {
+      return true;
+    }
+
+    // falsy value can't be a Symbol
+    if (!propValue) {
+      return false;
+    }
+
+    // 19.4.3.5 Symbol.prototype[@@toStringTag] === 'Symbol'
+    if (propValue['@@toStringTag'] === 'Symbol') {
+      return true;
+    }
+
+    // Fallback for non-spec compliant Symbols which are polyfilled.
+    if (typeof Symbol === 'function' && propValue instanceof Symbol) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // Equivalent of `typeof` but with special handling for array and regexp.
+  function getPropType(propValue) {
+    var propType = typeof propValue;
+    if (Array.isArray(propValue)) {
+      return 'array';
+    }
+    if (propValue instanceof RegExp) {
+      // Old webkits (at least until Android 4.0) return 'function' rather than
+      // 'object' for typeof a RegExp. We'll normalize this here so that /bla/
+      // passes PropTypes.object.
+      return 'object';
+    }
+    if (isSymbol(propType, propValue)) {
+      return 'symbol';
+    }
+    return propType;
+  }
+
+  // This handles more types than `getPropType`. Only used for error messages.
+  // See `createPrimitiveTypeChecker`.
+  function getPreciseType(propValue) {
+    if (typeof propValue === 'undefined' || propValue === null) {
+      return '' + propValue;
+    }
+    var propType = getPropType(propValue);
+    if (propType === 'object') {
+      if (propValue instanceof Date) {
+        return 'date';
+      } else if (propValue instanceof RegExp) {
+        return 'regexp';
+      }
+    }
+    return propType;
+  }
+
+  // Returns a string that is postfixed to a warning about an invalid type.
+  // For example, "undefined" or "of type array"
+  function getPostfixForTypeWarning(value) {
+    var type = getPreciseType(value);
+    switch (type) {
+      case 'array':
+      case 'object':
+        return 'an ' + type;
+      case 'boolean':
+      case 'date':
+      case 'regexp':
+        return 'a ' + type;
+      default:
+        return type;
+    }
+  }
+
+  // Returns class name of the object, if any.
+  function getClassName(propValue) {
+    if (!propValue.constructor || !propValue.constructor.name) {
+      return ANONYMOUS;
+    }
+    return propValue.constructor.name;
+  }
+
+  ReactPropTypes.checkPropTypes = checkPropTypes;
+  ReactPropTypes.resetWarningCache = checkPropTypes.resetWarningCache;
+  ReactPropTypes.PropTypes = ReactPropTypes;
+
+  return ReactPropTypes;
+};
+
+
+/***/ }),
+
+/***/ "./node_modules/prop-types/index.js":
+/*!******************************************!*\
+  !*** ./node_modules/prop-types/index.js ***!
+  \******************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+if (true) {
+  var ReactIs = __webpack_require__(/*! react-is */ "./node_modules/react-is/index.js");
+
+  // By explicitly using `prop-types` you are opting into new development behavior.
+  // http://fb.me/prop-types-in-prod
+  var throwOnDirectAccess = true;
+  module.exports = __webpack_require__(/*! ./factoryWithTypeCheckers */ "./node_modules/prop-types/factoryWithTypeCheckers.js")(ReactIs.isElement, throwOnDirectAccess);
+} else {}
+
+
+/***/ }),
+
 /***/ "./node_modules/prop-types/lib/ReactPropTypesSecret.js":
 /*!*************************************************************!*\
   !*** ./node_modules/prop-types/lib/ReactPropTypesSecret.js ***!
@@ -19411,6 +20040,1101 @@ var ReactPropTypesSecret = 'SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED';
 
 module.exports = ReactPropTypesSecret;
 
+
+/***/ }),
+
+/***/ "./node_modules/react-currency-format/lib/currency-format.js":
+/*!*******************************************************************!*\
+  !*** ./node_modules/react-currency-format/lib/currency-format.js ***!
+  \*******************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _propTypes = __webpack_require__(/*! prop-types */ "./node_modules/prop-types/index.js");
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+var _react = __webpack_require__(/*! react */ "./node_modules/react/index.js");
+
+var _react2 = _interopRequireDefault(_react);
+
+var _utils = __webpack_require__(/*! ./utils */ "./node_modules/react-currency-format/lib/utils.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var propTypes = {
+  thousandSeparator: _propTypes2.default.oneOfType([_propTypes2.default.string, _propTypes2.default.oneOf([true])]),
+  thousandSpacing: _propTypes2.default.oneOf(['2', '2s', '3', '4']),
+  decimalSeparator: _propTypes2.default.string,
+  decimalScale: _propTypes2.default.number,
+  fixedDecimalScale: _propTypes2.default.bool,
+  displayType: _propTypes2.default.oneOf(['input', 'text']),
+  prefix: _propTypes2.default.string,
+  suffix: _propTypes2.default.string,
+  format: _propTypes2.default.oneOfType([_propTypes2.default.string, _propTypes2.default.func]),
+  removeFormatting: _propTypes2.default.func,
+  mask: _propTypes2.default.oneOfType([_propTypes2.default.string, _propTypes2.default.arrayOf(_propTypes2.default.string)]),
+  value: _propTypes2.default.oneOfType([_propTypes2.default.number, _propTypes2.default.string]),
+  isNumericString: _propTypes2.default.bool,
+  customInput: _propTypes2.default.func,
+  allowNegative: _propTypes2.default.bool,
+  onValueChange: _propTypes2.default.func,
+  onKeyDown: _propTypes2.default.func,
+  onMouseUp: _propTypes2.default.func,
+  onChange: _propTypes2.default.func,
+  onFocus: _propTypes2.default.func,
+  onBlur: _propTypes2.default.func,
+  type: _propTypes2.default.oneOf(['text', 'tel']),
+  isAllowed: _propTypes2.default.func,
+  renderText: _propTypes2.default.func
+};
+
+var defaultProps = {
+  displayType: 'input',
+  decimalSeparator: '.',
+  thousandSpacing: '3',
+  fixedDecimalScale: false,
+  prefix: '',
+  suffix: '',
+  allowNegative: true,
+  isNumericString: false,
+  type: 'text',
+  onValueChange: _utils.noop,
+  onChange: _utils.noop,
+  onKeyDown: _utils.noop,
+  onMouseUp: _utils.noop,
+  onFocus: _utils.noop,
+  onBlur: _utils.noop,
+  isAllowed: _utils.returnTrue
+};
+
+var CurrencyFormat = function (_React$Component) {
+  _inherits(CurrencyFormat, _React$Component);
+
+  function CurrencyFormat(props) {
+    _classCallCheck(this, CurrencyFormat);
+
+    //validate props
+    var _this = _possibleConstructorReturn(this, (CurrencyFormat.__proto__ || Object.getPrototypeOf(CurrencyFormat)).call(this, props));
+
+    _this.validateProps();
+
+    var formattedValue = _this.formatValueProp();
+
+    _this.state = {
+      value: formattedValue,
+      numAsString: _this.removeFormatting(formattedValue)
+    };
+
+    _this.onChange = _this.onChange.bind(_this);
+    _this.onKeyDown = _this.onKeyDown.bind(_this);
+    _this.onMouseUp = _this.onMouseUp.bind(_this);
+    _this.onFocus = _this.onFocus.bind(_this);
+    _this.onBlur = _this.onBlur.bind(_this);
+    return _this;
+  }
+
+  _createClass(CurrencyFormat, [{
+    key: 'componentDidUpdate',
+    value: function componentDidUpdate(prevProps) {
+      this.updateValueIfRequired(prevProps);
+    }
+  }, {
+    key: 'updateValueIfRequired',
+    value: function updateValueIfRequired(prevProps) {
+      var props = this.props,
+          state = this.state;
+
+
+      if (prevProps !== props) {
+        //validate props
+        this.validateProps();
+
+        var stateValue = state.value;
+
+        var lastNumStr = state.numAsString || '';
+
+        var formattedValue = props.value === undefined ? this.formatNumString(lastNumStr) : this.formatValueProp();
+
+        if (formattedValue !== stateValue) {
+          this.setState({
+            value: formattedValue,
+            numAsString: this.removeFormatting(formattedValue)
+          });
+        }
+      }
+    }
+
+    /** Misc methods **/
+
+  }, {
+    key: 'getFloatString',
+    value: function getFloatString() {
+      var num = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+
+      var _getSeparators = this.getSeparators(),
+          decimalSeparator = _getSeparators.decimalSeparator;
+
+      var numRegex = this.getNumberRegex(true);
+
+      //remove negation for regex check
+      var hasNegation = num[0] === '-';
+      if (hasNegation) num = num.replace('-', '');
+
+      num = (num.match(numRegex) || []).join('').replace(decimalSeparator, '.');
+
+      //remove extra decimals
+      var firstDecimalIndex = num.indexOf('.');
+
+      if (firstDecimalIndex !== -1) {
+        num = num.substring(0, firstDecimalIndex) + '.' + num.substring(firstDecimalIndex + 1, num.length).replace(new RegExp((0, _utils.escapeRegExp)(decimalSeparator), 'g'), '');
+      }
+
+      //add negation back
+      if (hasNegation) num = '-' + num;
+
+      return num;
+    }
+
+    //returned regex assumes decimalSeparator is as per prop
+
+  }, {
+    key: 'getNumberRegex',
+    value: function getNumberRegex(g, ignoreDecimalSeparator) {
+      var _props = this.props,
+          format = _props.format,
+          decimalScale = _props.decimalScale;
+
+      var _getSeparators2 = this.getSeparators(),
+          decimalSeparator = _getSeparators2.decimalSeparator;
+
+      return new RegExp('\\d' + (decimalSeparator && decimalScale !== 0 && !ignoreDecimalSeparator && !format ? '|' + (0, _utils.escapeRegExp)(decimalSeparator) : ''), g ? 'g' : undefined);
+    }
+  }, {
+    key: 'getSeparators',
+    value: function getSeparators() {
+      var _props2 = this.props,
+          decimalSeparator = _props2.decimalSeparator,
+          thousandSpacing = _props2.thousandSpacing;
+      var thousandSeparator = this.props.thousandSeparator;
+
+
+      if (thousandSeparator === true) {
+        thousandSeparator = ',';
+      }
+
+      return {
+        decimalSeparator: decimalSeparator,
+        thousandSeparator: thousandSeparator,
+        thousandSpacing: thousandSpacing
+      };
+    }
+  }, {
+    key: 'getMaskAtIndex',
+    value: function getMaskAtIndex(index) {
+      var _props$mask = this.props.mask,
+          mask = _props$mask === undefined ? ' ' : _props$mask;
+
+      if (typeof mask === 'string') {
+        return mask;
+      }
+
+      return mask[index] || ' ';
+    }
+  }, {
+    key: 'validateProps',
+    value: function validateProps() {
+      var mask = this.props.mask;
+
+      //validate decimalSeparator and thousandSeparator
+
+      var _getSeparators3 = this.getSeparators(),
+          decimalSeparator = _getSeparators3.decimalSeparator,
+          thousandSeparator = _getSeparators3.thousandSeparator;
+
+      if (decimalSeparator === thousandSeparator) {
+        throw new Error('\n          Decimal separator can\'t be same as thousand separator.\n\n          thousandSeparator: ' + thousandSeparator + ' (thousandSeparator = {true} is same as thousandSeparator = ",")\n          decimalSeparator: ' + decimalSeparator + ' (default value for decimalSeparator is .)\n       ');
+      }
+
+      //validate mask
+      if (mask) {
+        var maskAsStr = mask === 'string' ? mask : mask.toString();
+        if (maskAsStr.match(/\d/g)) {
+          throw new Error('\n          Mask ' + mask + ' should not contain numeric character;\n        ');
+        }
+      }
+    }
+  }, {
+    key: 'splitDecimal',
+    value: function splitDecimal(numStr) {
+      var allowNegative = this.props.allowNegative;
+
+      var hasNagation = numStr[0] === '-';
+      var addNegation = hasNagation && allowNegative;
+      numStr = numStr.replace('-', '');
+
+      var parts = numStr.split('.');
+      var beforeDecimal = parts[0];
+      var afterDecimal = parts[1] || '';
+
+      return {
+        beforeDecimal: beforeDecimal,
+        afterDecimal: afterDecimal,
+        hasNagation: hasNagation,
+        addNegation: addNegation
+      };
+    }
+
+    /** Misc methods end **/
+
+    /** caret specific methods **/
+
+  }, {
+    key: 'setPatchedCaretPosition',
+    value: function setPatchedCaretPosition(el, caretPos, currentValue) {
+      /* setting caret position within timeout of 0ms is required for mobile chrome,
+      otherwise browser resets the caret position after we set it
+      We are also setting it without timeout so that in normal browser we don't see the flickering */
+      (0, _utils.setCaretPosition)(el, caretPos);
+      setTimeout(function () {
+        if (el.value === currentValue) (0, _utils.setCaretPosition)(el, caretPos);
+      }, 0);
+    }
+
+    /* This keeps the caret within typing area so people can't type in between prefix or suffix */
+
+  }, {
+    key: 'correctCaretPosition',
+    value: function correctCaretPosition(value, caretPos, direction) {
+      var _props3 = this.props,
+          prefix = _props3.prefix,
+          suffix = _props3.suffix,
+          format = _props3.format;
+
+      //in case of format as number limit between prefix and suffix
+
+      if (!format) {
+        var hasNegation = value[0] === '-';
+        return Math.min(Math.max(caretPos, prefix.length + (hasNegation ? 1 : 0)), value.length - suffix.length);
+      }
+
+      //in case if custom format method don't do anything
+      if (typeof format === 'function') return caretPos;
+
+      /* in case format is string find the closest # position from the caret position */
+
+      //in case the caretPos have input value on it don't do anything
+      if (format[caretPos] === '#' && (0, _utils.charIsNumber)(value[caretPos])) return caretPos;
+
+      //if caretPos is just after input value don't do anything
+      if (format[caretPos - 1] === '#' && (0, _utils.charIsNumber)(value[caretPos - 1])) return caretPos;
+
+      //find the nearest caret position
+      var firstHashPosition = format.indexOf('#');
+      var lastHashPosition = format.lastIndexOf('#');
+
+      //limit the cursor between the first # position and the last # position
+      caretPos = Math.min(Math.max(caretPos, firstHashPosition), lastHashPosition + 1);
+
+      var nextPos = format.substring(caretPos, format.length).indexOf('#');
+      var caretLeftBound = caretPos;
+      var caretRightBoud = caretPos + (nextPos === -1 ? 0 : nextPos);
+
+      //get the position where the last number is present
+      while (caretLeftBound > firstHashPosition && (format[caretLeftBound] !== '#' || !(0, _utils.charIsNumber)(value[caretLeftBound]))) {
+        caretLeftBound -= 1;
+      }
+
+      var goToLeft = !(0, _utils.charIsNumber)(value[caretRightBoud]) || direction === 'left' && caretPos !== firstHashPosition || caretPos - caretLeftBound < caretRightBoud - caretPos;
+
+      return goToLeft ? caretLeftBound + 1 : caretRightBoud;
+    }
+  }, {
+    key: 'getCaretPosition',
+    value: function getCaretPosition(inputValue, formattedValue, caretPos) {
+      var format = this.props.format;
+
+      var stateValue = this.state.value;
+      var numRegex = this.getNumberRegex(true);
+      var inputNumber = (inputValue.match(numRegex) || []).join('');
+      var formattedNumber = (formattedValue.match(numRegex) || []).join('');
+      var j = void 0,
+          i = void 0;
+
+      j = 0;
+
+      for (i = 0; i < caretPos; i++) {
+        var currentInputChar = inputValue[i] || '';
+        var currentFormatChar = formattedValue[j] || '';
+        //no need to increase new cursor position if formatted value does not have those characters
+        //case inputValue = 1a23 and formattedValue =  123
+        if (!currentInputChar.match(numRegex) && currentInputChar !== currentFormatChar) continue;
+
+        //When we are striping out leading zeros maintain the new cursor position
+        //Case inputValue = 00023 and formattedValue = 23;
+        if (currentInputChar === '0' && currentFormatChar.match(numRegex) && currentFormatChar !== '0' && inputNumber.length !== formattedNumber.length) continue;
+
+        //we are not using currentFormatChar because j can change here
+        while (currentInputChar !== formattedValue[j] && j < formattedValue.length) {
+          j++;
+        }j++;
+      }
+
+      if (typeof format === 'string' && !stateValue) {
+        //set it to the maximum value so it goes after the last number
+        j = formattedValue.length;
+      }
+
+      //correct caret position if its outside of editable area
+      j = this.correctCaretPosition(formattedValue, j);
+
+      return j;
+    }
+    /** caret specific methods ends **/
+
+    /** methods to remove formattting **/
+
+  }, {
+    key: 'removePrefixAndSuffix',
+    value: function removePrefixAndSuffix(val) {
+      var _props4 = this.props,
+          format = _props4.format,
+          prefix = _props4.prefix,
+          suffix = _props4.suffix;
+
+      //remove prefix and suffix
+
+      if (!format && val) {
+        var isNegative = val[0] === '-';
+
+        //remove negation sign
+        if (isNegative) val = val.substring(1, val.length);
+
+        //remove prefix
+        val = prefix && val.indexOf(prefix) === 0 ? val.substring(prefix.length, val.length) : val;
+
+        //remove suffix
+        var suffixLastIndex = val.lastIndexOf(suffix);
+        val = suffix && suffixLastIndex !== -1 && suffixLastIndex === val.length - suffix.length ? val.substring(0, suffixLastIndex) : val;
+
+        //add negation sign back
+        if (isNegative) val = '-' + val;
+      }
+
+      return val;
+    }
+  }, {
+    key: 'removePatternFormatting',
+    value: function removePatternFormatting(val) {
+      var format = this.props.format;
+
+      var formatArray = format.split('#').filter(function (str) {
+        return str !== '';
+      });
+      var start = 0;
+      var numStr = '';
+
+      for (var i = 0, ln = formatArray.length; i <= ln; i++) {
+        var part = formatArray[i] || '';
+
+        //if i is the last fragment take the index of end of the value
+        //For case like +1 (911) 911 91 91 having pattern +1 (###) ### ## ##
+        var index = i === ln ? val.length : val.indexOf(part, start);
+
+        /* in any case if we don't find the pattern part in the value assume the val as numeric string
+        This will be also in case if user has started typing, in any other case it will not be -1
+        unless wrong prop value is provided */
+        if (index === -1) {
+          numStr = val;
+          break;
+        } else {
+          numStr += val.substring(start, index);
+          start = index + part.length;
+        }
+      }
+
+      return (numStr.match(/\d/g) || []).join('');
+    }
+  }, {
+    key: 'removeFormatting',
+    value: function removeFormatting(val) {
+      var _props5 = this.props,
+          format = _props5.format,
+          removeFormatting = _props5.removeFormatting;
+
+      if (!val) return val;
+
+      if (!format) {
+        val = this.removePrefixAndSuffix(val);
+        val = this.getFloatString(val);
+      } else if (typeof format === 'string') {
+        val = this.removePatternFormatting(val);
+      } else if (typeof removeFormatting === 'function') {
+        //condition need to be handled if format method is provide,
+        val = removeFormatting(val);
+      } else {
+        val = (val.match(/\d/g) || []).join('');
+      }
+      return val;
+    }
+    /** methods to remove formattting end **/
+
+    /*** format specific methods start ***/
+    /**
+     * Format when # based string is provided
+     * @param  {string} numStr Numeric String
+     * @return {string}        formatted Value
+     */
+
+  }, {
+    key: 'formatWithPattern',
+    value: function formatWithPattern(numStr) {
+      var format = this.props.format;
+
+      var hashCount = 0;
+      var formattedNumberAry = format.split('');
+      for (var i = 0, ln = format.length; i < ln; i++) {
+        if (format[i] === '#') {
+          formattedNumberAry[i] = numStr[hashCount] || this.getMaskAtIndex(hashCount);
+          hashCount += 1;
+        }
+      }
+      return formattedNumberAry.join('');
+    }
+    /**
+     * Format the given string according to thousand separator and thousand spacing
+     * @param {*} beforeDecimal 
+     * @param {*} thousandSeparator 
+     * @param {*} thousandSpacing 
+     */
+
+  }, {
+    key: 'formatThousand',
+    value: function formatThousand(beforeDecimal, thousandSeparator, thousandSpacing) {
+      var digitalGroup = void 0;
+      switch (thousandSpacing) {
+        case _utils.thousandGroupSpacing.two:
+          digitalGroup = /(\d)(?=(\d{2})+(?!\d))/g;
+          break;
+        case _utils.thousandGroupSpacing.twoScaled:
+          digitalGroup = /(\d)(?=(((\d{2})+)(\d{1})(?!\d)))/g;
+          break;
+        case _utils.thousandGroupSpacing.four:
+          digitalGroup = /(\d)(?=(\d{4})+(?!\d))/g;
+          break;
+        default:
+          digitalGroup = /(\d)(?=(\d{3})+(?!\d))/g;
+      }
+
+      return beforeDecimal.replace(digitalGroup, '$1' + thousandSeparator);
+    }
+    /**
+     * @param  {string} numStr Numeric string/floatString] It always have decimalSeparator as .
+     * @return {string} formatted Value
+     */
+
+  }, {
+    key: 'formatAsNumber',
+    value: function formatAsNumber(numStr) {
+      var _props6 = this.props,
+          decimalScale = _props6.decimalScale,
+          fixedDecimalScale = _props6.fixedDecimalScale,
+          prefix = _props6.prefix,
+          suffix = _props6.suffix;
+
+      var _getSeparators4 = this.getSeparators(),
+          thousandSeparator = _getSeparators4.thousandSeparator,
+          decimalSeparator = _getSeparators4.decimalSeparator,
+          thousandSpacing = _getSeparators4.thousandSpacing;
+
+      var hasDecimalSeparator = numStr.indexOf('.') !== -1 || decimalScale && fixedDecimalScale;
+
+      var _splitDecimal = this.splitDecimal(numStr),
+          beforeDecimal = _splitDecimal.beforeDecimal,
+          afterDecimal = _splitDecimal.afterDecimal,
+          addNegation = _splitDecimal.addNegation; // eslint-disable-line prefer-const
+
+      //apply decimal precision if its defined
+
+
+      if (decimalScale !== undefined) afterDecimal = (0, _utils.limitToScale)(afterDecimal, decimalScale, fixedDecimalScale);
+
+      if (thousandSeparator) {
+        beforeDecimal = this.formatThousand(beforeDecimal, thousandSeparator, thousandSpacing);
+      }
+
+      //add prefix and suffix
+      if (prefix) beforeDecimal = prefix + beforeDecimal;
+      if (suffix) afterDecimal = afterDecimal + suffix;
+
+      //restore negation sign
+      if (addNegation) beforeDecimal = '-' + beforeDecimal;
+
+      numStr = beforeDecimal + (hasDecimalSeparator && decimalSeparator || '') + afterDecimal;
+
+      return numStr;
+    }
+  }, {
+    key: 'formatNumString',
+    value: function formatNumString() {
+      var value = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var format = this.props.format;
+
+      var formattedValue = value;
+
+      if (value === '') {
+        formattedValue = '';
+      } else if (value === '-' && !format) {
+        formattedValue = '-';
+        value = '';
+      } else if (typeof format === 'string') {
+        formattedValue = this.formatWithPattern(formattedValue);
+      } else if (typeof format === 'function') {
+        formattedValue = format(formattedValue);
+      } else {
+        formattedValue = this.formatAsNumber(formattedValue);
+      }
+
+      return formattedValue;
+    }
+  }, {
+    key: 'formatValueProp',
+    value: function formatValueProp() {
+      var _props7 = this.props,
+          format = _props7.format,
+          decimalScale = _props7.decimalScale,
+          fixedDecimalScale = _props7.fixedDecimalScale;
+      var _props8 = this.props,
+          value = _props8.value,
+          isNumericString = _props8.isNumericString;
+
+      // if value is not defined return empty string
+
+      if (value === undefined) return '';
+
+      if (typeof value === 'number') {
+        value = value.toString();
+        isNumericString = true;
+      }
+
+      //round the number based on decimalScale
+      //format only if non formatted value is provided
+      if (isNumericString && !format && typeof decimalScale === 'number') {
+        value = (0, _utils.roundToPrecision)(value, decimalScale, fixedDecimalScale);
+      }
+
+      var formattedValue = isNumericString ? this.formatNumString(value) : this.formatInput(value);
+
+      return formattedValue;
+    }
+  }, {
+    key: 'formatNegation',
+    value: function formatNegation() {
+      var value = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var allowNegative = this.props.allowNegative;
+
+      var negationRegex = new RegExp('(-)');
+      var doubleNegationRegex = new RegExp('(-)(.)*(-)');
+
+      // Check number has '-' value
+      var hasNegation = negationRegex.test(value);
+
+      // Check number has 2 or more '-' values
+      var removeNegation = doubleNegationRegex.test(value);
+
+      //remove negation
+      value = value.replace(/-/g, '');
+
+      if (hasNegation && !removeNegation && allowNegative) {
+        value = '-' + value;
+      }
+
+      return value;
+    }
+  }, {
+    key: 'formatInput',
+    value: function formatInput() {
+      var value = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var format = this.props.format;
+
+      //format negation only if we are formatting as number
+
+      if (!format) {
+        value = this.formatNegation(value);
+      }
+
+      //remove formatting from number
+      value = this.removeFormatting(value);
+
+      return this.formatNumString(value);
+    }
+
+    /*** format specific methods end ***/
+
+  }, {
+    key: 'isCharacterAFormat',
+    value: function isCharacterAFormat(caretPos, value) {
+      var _props9 = this.props,
+          format = _props9.format,
+          prefix = _props9.prefix,
+          suffix = _props9.suffix,
+          decimalScale = _props9.decimalScale,
+          fixedDecimalScale = _props9.fixedDecimalScale;
+
+      var _getSeparators5 = this.getSeparators(),
+          decimalSeparator = _getSeparators5.decimalSeparator;
+
+      //check within format pattern
+
+
+      if (typeof format === 'string' && format[caretPos] !== '#') return true;
+
+      //check in number format
+      if (!format && (caretPos < prefix.length || caretPos >= value.length - suffix.length || decimalScale && fixedDecimalScale && value[caretPos] === decimalSeparator)) {
+        return true;
+      }
+
+      return false;
+    }
+  }, {
+    key: 'checkIfFormatGotDeleted',
+    value: function checkIfFormatGotDeleted(start, end, value) {
+      for (var i = start; i < end; i++) {
+        if (this.isCharacterAFormat(i, value)) return true;
+      }
+      return false;
+    }
+
+    /**
+     * This will check if any formatting got removed by the delete or backspace and reset the value
+     * It will also work as fallback if android chome keyDown handler does not work
+     **/
+
+  }, {
+    key: 'correctInputValue',
+    value: function correctInputValue(caretPos, lastValue, value) {
+      var format = this.props.format;
+
+      var lastNumStr = this.state.numAsString || '';
+
+      //don't do anyhting if something got added, or if value is empty string (when whole input is cleared)
+      if (value.length >= lastValue.length || !value.length) {
+        return value;
+      }
+
+      var start = caretPos;
+      var lastValueParts = (0, _utils.splitString)(lastValue, caretPos);
+      var newValueParts = (0, _utils.splitString)(value, caretPos);
+      var deletedIndex = lastValueParts[1].lastIndexOf(newValueParts[1]);
+      var diff = deletedIndex !== -1 ? lastValueParts[1].substring(0, deletedIndex) : '';
+      var end = start + diff.length;
+
+      //if format got deleted reset the value to last value
+      if (this.checkIfFormatGotDeleted(start, end, lastValue)) {
+        value = lastValue;
+      }
+
+      //for numbers check if beforeDecimal got deleted and there is nothing after decimal,
+      //clear all numbers in such case while keeping the - sign
+      if (!format) {
+        var numericString = this.removeFormatting(value);
+
+        var _splitDecimal2 = this.splitDecimal(numericString),
+            beforeDecimal = _splitDecimal2.beforeDecimal,
+            afterDecimal = _splitDecimal2.afterDecimal,
+            addNegation = _splitDecimal2.addNegation; // eslint-disable-line prefer-const
+
+        //clear only if something got deleted
+
+
+        if (numericString.length < lastNumStr.length && beforeDecimal === '' && !parseFloat(afterDecimal)) {
+          return addNegation ? '-' : '';
+        }
+      }
+
+      return value;
+    }
+  }, {
+    key: 'onChange',
+    value: function onChange(e) {
+      e.persist();
+      var el = e.target;
+      var inputValue = el.value;
+      var state = this.state,
+          props = this.props;
+      var isAllowed = props.isAllowed;
+
+      var lastValue = state.value || '';
+
+      /*Max of selectionStart and selectionEnd is taken for the patch of pixel and other mobile device caret bug*/
+      var currentCaretPosition = Math.max(el.selectionStart, el.selectionEnd);
+
+      inputValue = this.correctInputValue(currentCaretPosition, lastValue, inputValue);
+
+      var formattedValue = this.formatInput(inputValue) || '';
+      var numAsString = this.removeFormatting(formattedValue);
+
+      var valueObj = {
+        formattedValue: formattedValue,
+        value: numAsString,
+        floatValue: parseFloat(numAsString)
+      };
+
+      if (!isAllowed(valueObj)) {
+        formattedValue = lastValue;
+      }
+
+      //set the value imperatively, this is required for IE fix
+      el.value = formattedValue;
+
+      //get the caret position
+      var caretPos = this.getCaretPosition(inputValue, formattedValue, currentCaretPosition);
+
+      //set caret position
+      this.setPatchedCaretPosition(el, caretPos, formattedValue);
+
+      //change the state
+      if (formattedValue !== lastValue) {
+        this.setState({ value: formattedValue, numAsString: numAsString }, function () {
+          props.onValueChange(valueObj);
+          props.onChange(e);
+        });
+      } else {
+        props.onChange(e);
+      }
+    }
+  }, {
+    key: 'onBlur',
+    value: function onBlur(e) {
+      var props = this.props,
+          state = this.state;
+      var format = props.format,
+          onBlur = props.onBlur;
+      var numAsString = state.numAsString;
+
+      var lastValue = state.value;
+      if (!format) {
+        numAsString = (0, _utils.fixLeadingZero)(numAsString);
+        var formattedValue = this.formatNumString(numAsString);
+        var valueObj = {
+          formattedValue: formattedValue,
+          value: numAsString,
+          floatValue: parseFloat(numAsString)
+        };
+
+        //change the state
+        if (formattedValue !== lastValue) {
+          // the event needs to be persisted because its properties can be accessed in an asynchronous way
+          e.persist();
+          this.setState({ value: formattedValue, numAsString: numAsString }, function () {
+            props.onValueChange(valueObj);
+            onBlur(e);
+          });
+          return;
+        }
+      }
+      onBlur(e);
+    }
+  }, {
+    key: 'onKeyDown',
+    value: function onKeyDown(e) {
+      var el = e.target;
+      var key = e.key;
+      var selectionEnd = el.selectionEnd,
+          value = el.value;
+      var selectionStart = el.selectionStart;
+
+      var expectedCaretPosition = void 0;
+      var _props10 = this.props,
+          decimalScale = _props10.decimalScale,
+          fixedDecimalScale = _props10.fixedDecimalScale,
+          prefix = _props10.prefix,
+          suffix = _props10.suffix,
+          format = _props10.format,
+          onKeyDown = _props10.onKeyDown;
+
+      var ignoreDecimalSeparator = decimalScale !== undefined && fixedDecimalScale;
+      var numRegex = this.getNumberRegex(false, ignoreDecimalSeparator);
+      var negativeRegex = new RegExp('-');
+      var isPatternFormat = typeof format === 'string';
+
+      //Handle backspace and delete against non numerical/decimal characters or arrow keys
+      if (key === 'ArrowLeft' || key === 'Backspace') {
+        expectedCaretPosition = selectionStart - 1;
+      } else if (key === 'ArrowRight') {
+        expectedCaretPosition = selectionStart + 1;
+      } else if (key === 'Delete') {
+        expectedCaretPosition = selectionStart;
+      }
+
+      //if expectedCaretPosition is not set it means we don't want to Handle keyDown
+      //also if multiple characters are selected don't handle
+      if (expectedCaretPosition === undefined || selectionStart !== selectionEnd) {
+        onKeyDown(e);
+        return;
+      }
+
+      var newCaretPosition = expectedCaretPosition;
+      var leftBound = isPatternFormat ? format.indexOf('#') : prefix.length;
+      var rightBound = isPatternFormat ? format.lastIndexOf('#') + 1 : value.length - suffix.length;
+
+      if (key === 'ArrowLeft' || key === 'ArrowRight') {
+        var direction = key === 'ArrowLeft' ? 'left' : 'right';
+        newCaretPosition = this.correctCaretPosition(value, expectedCaretPosition, direction);
+      } else if (key === 'Delete' && !numRegex.test(value[expectedCaretPosition]) && !negativeRegex.test(value[expectedCaretPosition])) {
+        while (!numRegex.test(value[newCaretPosition]) && newCaretPosition < rightBound) {
+          newCaretPosition++;
+        }
+      } else if (key === 'Backspace' && !numRegex.test(value[expectedCaretPosition]) && !negativeRegex.test(value[expectedCaretPosition])) {
+        while (!numRegex.test(value[newCaretPosition - 1]) && newCaretPosition > leftBound) {
+          newCaretPosition--;
+        }
+        newCaretPosition = this.correctCaretPosition(value, newCaretPosition, 'left');
+      }
+
+      if (newCaretPosition !== expectedCaretPosition || expectedCaretPosition < leftBound || expectedCaretPosition > rightBound) {
+        e.preventDefault();
+        this.setPatchedCaretPosition(el, newCaretPosition, value);
+      }
+
+      /* NOTE: this is just required for unit test as we need to get the newCaretPosition,
+              Remove this when you find different solution */
+      if (e.isUnitTestRun) {
+        this.setPatchedCaretPosition(el, newCaretPosition, value);
+      }
+
+      this.props.onKeyDown(e);
+    }
+
+    /** required to handle the caret position when click anywhere within the input **/
+
+  }, {
+    key: 'onMouseUp',
+    value: function onMouseUp(e) {
+      var el = e.target;
+      var selectionStart = el.selectionStart,
+          selectionEnd = el.selectionEnd,
+          value = el.value;
+
+
+      if (selectionStart === selectionEnd) {
+        var caretPostion = this.correctCaretPosition(value, selectionStart);
+        if (caretPostion !== selectionStart) {
+          this.setPatchedCaretPosition(el, caretPostion, value);
+        }
+      }
+
+      this.props.onMouseUp(e);
+    }
+  }, {
+    key: 'onFocus',
+    value: function onFocus(e) {
+      var _this2 = this;
+
+      // Workaround Chrome and Safari bug https://bugs.chromium.org/p/chromium/issues/detail?id=779328
+      // (onFocus event target selectionStart is always 0 before setTimeout)
+      e.persist();
+      setTimeout(function () {
+        var el = e.target;
+        var selectionStart = el.selectionStart,
+            value = el.value;
+
+
+        var caretPosition = _this2.correctCaretPosition(value, selectionStart);
+        if (caretPosition !== selectionStart) {
+          _this2.setPatchedCaretPosition(el, caretPosition, value);
+        }
+
+        _this2.props.onFocus(e);
+      });
+    }
+  }, {
+    key: 'render',
+    value: function render() {
+      var _props11 = this.props,
+          type = _props11.type,
+          displayType = _props11.displayType,
+          customInput = _props11.customInput,
+          renderText = _props11.renderText;
+      var value = this.state.value;
+
+
+      var otherProps = (0, _utils.omit)(this.props, propTypes);
+
+      var inputProps = _extends({}, otherProps, {
+        type: type,
+        value: value,
+        onChange: this.onChange,
+        onKeyDown: this.onKeyDown,
+        onMouseUp: this.onMouseUp,
+        onFocus: this.onFocus,
+        onBlur: this.onBlur
+      });
+
+      if (displayType === 'text') {
+        return renderText ? renderText(value) || null : _react2.default.createElement(
+          'span',
+          otherProps,
+          value
+        );
+      } else if (customInput) {
+        var CustomInput = customInput;
+        return _react2.default.createElement(CustomInput, inputProps);
+      }
+
+      return _react2.default.createElement('input', inputProps);
+    }
+  }]);
+
+  return CurrencyFormat;
+}(_react2.default.Component);
+
+CurrencyFormat.propTypes = propTypes;
+CurrencyFormat.defaultProps = defaultProps;
+
+module.exports = CurrencyFormat;
+
+/***/ }),
+
+/***/ "./node_modules/react-currency-format/lib/utils.js":
+/*!*********************************************************!*\
+  !*** ./node_modules/react-currency-format/lib/utils.js ***!
+  \*********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.noop = noop;
+exports.returnTrue = returnTrue;
+exports.charIsNumber = charIsNumber;
+exports.escapeRegExp = escapeRegExp;
+exports.fixLeadingZero = fixLeadingZero;
+exports.splitString = splitString;
+exports.limitToScale = limitToScale;
+exports.roundToPrecision = roundToPrecision;
+exports.omit = omit;
+exports.setCaretPosition = setCaretPosition;
+
+
+// basic noop function
+function noop() {}
+function returnTrue() {
+  return true;
+}
+
+function charIsNumber(char) {
+  return !!(char || '').match(/\d/);
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+function fixLeadingZero(numStr) {
+  if (!numStr) return numStr;
+  var isNegative = numStr[0] === '-';
+  if (isNegative) numStr = numStr.substring(1, numStr.length);
+  var parts = numStr.split('.');
+  var beforeDecimal = parts[0].replace(/^0+/, '') || '0';
+  var afterDecimal = parts[1] || '';
+
+  return '' + (isNegative ? '-' : '') + beforeDecimal + (afterDecimal ? '.' + afterDecimal : '');
+}
+
+function splitString(str, index) {
+  return [str.substring(0, index), str.substring(index)];
+}
+
+/**
+ * limit decimal numbers to given scale
+ * Not used .fixedTo because that will break with big numbers
+ */
+function limitToScale(numStr, scale, fixedDecimalScale) {
+  var str = '';
+  var filler = fixedDecimalScale ? '0' : '';
+  for (var i = 0; i <= scale - 1; i++) {
+    str += numStr[i] || filler;
+  }
+  return str;
+}
+
+/**
+ * This method is required to round prop value to given scale.
+ * Not used .round or .fixedTo because that will break with big numbers
+ */
+function roundToPrecision(numStr, scale, fixedDecimalScale) {
+  var numberParts = numStr.split('.');
+  var roundedDecimalParts = parseFloat('0.' + (numberParts[1] || '0')).toFixed(scale).split('.');
+  var intPart = numberParts[0].split('').reverse().reduce(function (roundedStr, current, idx) {
+    if (roundedStr.length > idx) {
+      return (Number(roundedStr[0]) + Number(current)).toString() + roundedStr.substring(1, roundedStr.length);
+    }
+    return current + roundedStr;
+  }, roundedDecimalParts[0]);
+
+  var decimalPart = limitToScale(roundedDecimalParts[1] || '', (numberParts[1] || '').length, fixedDecimalScale);
+
+  return intPart + (decimalPart ? '.' + decimalPart : '');
+}
+
+function omit(obj, keyMaps) {
+  var filteredObj = {};
+  Object.keys(obj).forEach(function (key) {
+    if (!keyMaps[key]) filteredObj[key] = obj[key];
+  });
+  return filteredObj;
+}
+
+/** set the caret positon in an input field **/
+function setCaretPosition(el, caretPos) {
+  el.value = el.value;
+  // ^ this is used to not only get "focus", but
+  // to make sure we don't have it everything -selected-
+  // (it causes an issue in chrome, and having it doesn't hurt any other browser)
+  if (el !== null) {
+    if (el.createTextRange) {
+      var range = el.createTextRange();
+      range.move('character', caretPos);
+      range.select();
+      return true;
+    }
+    // (el.selectionStart === 0 added for Firefox bug)
+    if (el.selectionStart || el.selectionStart === 0) {
+      el.focus();
+      el.setSelectionRange(caretPos, caretPos);
+      return true;
+    }
+
+    // fail city, fortunately this never happens (as far as I've tested) :)
+    el.focus();
+    return false;
+  }
+}
+
+var thousandGroupSpacing = exports.thousandGroupSpacing = {
+  two: '2',
+  twoScaled: '2s',
+  three: '3',
+  four: '4'
+};
 
 /***/ }),
 
@@ -44686,6 +46410,267 @@ if (false) {} else {
 
 /***/ }),
 
+/***/ "./node_modules/react-is/cjs/react-is.development.js":
+/*!***********************************************************!*\
+  !*** ./node_modules/react-is/cjs/react-is.development.js ***!
+  \***********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/** @license React v16.9.0
+ * react-is.development.js
+ *
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+
+
+
+
+if (true) {
+  (function() {
+'use strict';
+
+Object.defineProperty(exports, '__esModule', { value: true });
+
+// The Symbol used to tag the ReactElement-like types. If there is no native Symbol
+// nor polyfill, then a plain number is used for performance.
+var hasSymbol = typeof Symbol === 'function' && Symbol.for;
+
+var REACT_ELEMENT_TYPE = hasSymbol ? Symbol.for('react.element') : 0xeac7;
+var REACT_PORTAL_TYPE = hasSymbol ? Symbol.for('react.portal') : 0xeaca;
+var REACT_FRAGMENT_TYPE = hasSymbol ? Symbol.for('react.fragment') : 0xeacb;
+var REACT_STRICT_MODE_TYPE = hasSymbol ? Symbol.for('react.strict_mode') : 0xeacc;
+var REACT_PROFILER_TYPE = hasSymbol ? Symbol.for('react.profiler') : 0xead2;
+var REACT_PROVIDER_TYPE = hasSymbol ? Symbol.for('react.provider') : 0xeacd;
+var REACT_CONTEXT_TYPE = hasSymbol ? Symbol.for('react.context') : 0xeace;
+// TODO: We don't use AsyncMode or ConcurrentMode anymore. They were temporary
+// (unstable) APIs that have been removed. Can we remove the symbols?
+var REACT_ASYNC_MODE_TYPE = hasSymbol ? Symbol.for('react.async_mode') : 0xeacf;
+var REACT_CONCURRENT_MODE_TYPE = hasSymbol ? Symbol.for('react.concurrent_mode') : 0xeacf;
+var REACT_FORWARD_REF_TYPE = hasSymbol ? Symbol.for('react.forward_ref') : 0xead0;
+var REACT_SUSPENSE_TYPE = hasSymbol ? Symbol.for('react.suspense') : 0xead1;
+var REACT_SUSPENSE_LIST_TYPE = hasSymbol ? Symbol.for('react.suspense_list') : 0xead8;
+var REACT_MEMO_TYPE = hasSymbol ? Symbol.for('react.memo') : 0xead3;
+var REACT_LAZY_TYPE = hasSymbol ? Symbol.for('react.lazy') : 0xead4;
+var REACT_FUNDAMENTAL_TYPE = hasSymbol ? Symbol.for('react.fundamental') : 0xead5;
+var REACT_RESPONDER_TYPE = hasSymbol ? Symbol.for('react.responder') : 0xead6;
+
+function isValidElementType(type) {
+  return typeof type === 'string' || typeof type === 'function' ||
+  // Note: its typeof might be other than 'symbol' or 'number' if it's a polyfill.
+  type === REACT_FRAGMENT_TYPE || type === REACT_CONCURRENT_MODE_TYPE || type === REACT_PROFILER_TYPE || type === REACT_STRICT_MODE_TYPE || type === REACT_SUSPENSE_TYPE || type === REACT_SUSPENSE_LIST_TYPE || typeof type === 'object' && type !== null && (type.$$typeof === REACT_LAZY_TYPE || type.$$typeof === REACT_MEMO_TYPE || type.$$typeof === REACT_PROVIDER_TYPE || type.$$typeof === REACT_CONTEXT_TYPE || type.$$typeof === REACT_FORWARD_REF_TYPE || type.$$typeof === REACT_FUNDAMENTAL_TYPE || type.$$typeof === REACT_RESPONDER_TYPE);
+}
+
+/**
+ * Forked from fbjs/warning:
+ * https://github.com/facebook/fbjs/blob/e66ba20ad5be433eb54423f2b097d829324d9de6/packages/fbjs/src/__forks__/warning.js
+ *
+ * Only change is we use console.warn instead of console.error,
+ * and do nothing when 'console' is not supported.
+ * This really simplifies the code.
+ * ---
+ * Similar to invariant but only logs a warning if the condition is not met.
+ * This can be used to log issues in development environments in critical
+ * paths. Removing the logging code for production environments will keep the
+ * same logic and follow the same code paths.
+ */
+
+var lowPriorityWarning = function () {};
+
+{
+  var printWarning = function (format) {
+    for (var _len = arguments.length, args = Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+      args[_key - 1] = arguments[_key];
+    }
+
+    var argIndex = 0;
+    var message = 'Warning: ' + format.replace(/%s/g, function () {
+      return args[argIndex++];
+    });
+    if (typeof console !== 'undefined') {
+      console.warn(message);
+    }
+    try {
+      // --- Welcome to debugging React ---
+      // This error was thrown as a convenience so that you can use this stack
+      // to find the callsite that caused this warning to fire.
+      throw new Error(message);
+    } catch (x) {}
+  };
+
+  lowPriorityWarning = function (condition, format) {
+    if (format === undefined) {
+      throw new Error('`lowPriorityWarning(condition, format, ...args)` requires a warning ' + 'message argument');
+    }
+    if (!condition) {
+      for (var _len2 = arguments.length, args = Array(_len2 > 2 ? _len2 - 2 : 0), _key2 = 2; _key2 < _len2; _key2++) {
+        args[_key2 - 2] = arguments[_key2];
+      }
+
+      printWarning.apply(undefined, [format].concat(args));
+    }
+  };
+}
+
+var lowPriorityWarning$1 = lowPriorityWarning;
+
+function typeOf(object) {
+  if (typeof object === 'object' && object !== null) {
+    var $$typeof = object.$$typeof;
+    switch ($$typeof) {
+      case REACT_ELEMENT_TYPE:
+        var type = object.type;
+
+        switch (type) {
+          case REACT_ASYNC_MODE_TYPE:
+          case REACT_CONCURRENT_MODE_TYPE:
+          case REACT_FRAGMENT_TYPE:
+          case REACT_PROFILER_TYPE:
+          case REACT_STRICT_MODE_TYPE:
+          case REACT_SUSPENSE_TYPE:
+            return type;
+          default:
+            var $$typeofType = type && type.$$typeof;
+
+            switch ($$typeofType) {
+              case REACT_CONTEXT_TYPE:
+              case REACT_FORWARD_REF_TYPE:
+              case REACT_PROVIDER_TYPE:
+                return $$typeofType;
+              default:
+                return $$typeof;
+            }
+        }
+      case REACT_LAZY_TYPE:
+      case REACT_MEMO_TYPE:
+      case REACT_PORTAL_TYPE:
+        return $$typeof;
+    }
+  }
+
+  return undefined;
+}
+
+// AsyncMode is deprecated along with isAsyncMode
+var AsyncMode = REACT_ASYNC_MODE_TYPE;
+var ConcurrentMode = REACT_CONCURRENT_MODE_TYPE;
+var ContextConsumer = REACT_CONTEXT_TYPE;
+var ContextProvider = REACT_PROVIDER_TYPE;
+var Element = REACT_ELEMENT_TYPE;
+var ForwardRef = REACT_FORWARD_REF_TYPE;
+var Fragment = REACT_FRAGMENT_TYPE;
+var Lazy = REACT_LAZY_TYPE;
+var Memo = REACT_MEMO_TYPE;
+var Portal = REACT_PORTAL_TYPE;
+var Profiler = REACT_PROFILER_TYPE;
+var StrictMode = REACT_STRICT_MODE_TYPE;
+var Suspense = REACT_SUSPENSE_TYPE;
+
+var hasWarnedAboutDeprecatedIsAsyncMode = false;
+
+// AsyncMode should be deprecated
+function isAsyncMode(object) {
+  {
+    if (!hasWarnedAboutDeprecatedIsAsyncMode) {
+      hasWarnedAboutDeprecatedIsAsyncMode = true;
+      lowPriorityWarning$1(false, 'The ReactIs.isAsyncMode() alias has been deprecated, ' + 'and will be removed in React 17+. Update your code to use ' + 'ReactIs.isConcurrentMode() instead. It has the exact same API.');
+    }
+  }
+  return isConcurrentMode(object) || typeOf(object) === REACT_ASYNC_MODE_TYPE;
+}
+function isConcurrentMode(object) {
+  return typeOf(object) === REACT_CONCURRENT_MODE_TYPE;
+}
+function isContextConsumer(object) {
+  return typeOf(object) === REACT_CONTEXT_TYPE;
+}
+function isContextProvider(object) {
+  return typeOf(object) === REACT_PROVIDER_TYPE;
+}
+function isElement(object) {
+  return typeof object === 'object' && object !== null && object.$$typeof === REACT_ELEMENT_TYPE;
+}
+function isForwardRef(object) {
+  return typeOf(object) === REACT_FORWARD_REF_TYPE;
+}
+function isFragment(object) {
+  return typeOf(object) === REACT_FRAGMENT_TYPE;
+}
+function isLazy(object) {
+  return typeOf(object) === REACT_LAZY_TYPE;
+}
+function isMemo(object) {
+  return typeOf(object) === REACT_MEMO_TYPE;
+}
+function isPortal(object) {
+  return typeOf(object) === REACT_PORTAL_TYPE;
+}
+function isProfiler(object) {
+  return typeOf(object) === REACT_PROFILER_TYPE;
+}
+function isStrictMode(object) {
+  return typeOf(object) === REACT_STRICT_MODE_TYPE;
+}
+function isSuspense(object) {
+  return typeOf(object) === REACT_SUSPENSE_TYPE;
+}
+
+exports.typeOf = typeOf;
+exports.AsyncMode = AsyncMode;
+exports.ConcurrentMode = ConcurrentMode;
+exports.ContextConsumer = ContextConsumer;
+exports.ContextProvider = ContextProvider;
+exports.Element = Element;
+exports.ForwardRef = ForwardRef;
+exports.Fragment = Fragment;
+exports.Lazy = Lazy;
+exports.Memo = Memo;
+exports.Portal = Portal;
+exports.Profiler = Profiler;
+exports.StrictMode = StrictMode;
+exports.Suspense = Suspense;
+exports.isValidElementType = isValidElementType;
+exports.isAsyncMode = isAsyncMode;
+exports.isConcurrentMode = isConcurrentMode;
+exports.isContextConsumer = isContextConsumer;
+exports.isContextProvider = isContextProvider;
+exports.isElement = isElement;
+exports.isForwardRef = isForwardRef;
+exports.isFragment = isFragment;
+exports.isLazy = isLazy;
+exports.isMemo = isMemo;
+exports.isPortal = isPortal;
+exports.isProfiler = isProfiler;
+exports.isStrictMode = isStrictMode;
+exports.isSuspense = isSuspense;
+  })();
+}
+
+
+/***/ }),
+
+/***/ "./node_modules/react-is/index.js":
+/*!****************************************!*\
+  !*** ./node_modules/react-is/index.js ***!
+  \****************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+if (false) {} else {
+  module.exports = __webpack_require__(/*! ./cjs/react-is.development.js */ "./node_modules/react-is/cjs/react-is.development.js");
+}
+
+
+/***/ }),
+
 /***/ "./node_modules/react/cjs/react.development.js":
 /*!*****************************************************!*\
   !*** ./node_modules/react/cjs/react.development.js ***!
@@ -49250,6 +51235,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_dom__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(react_dom__WEBPACK_IMPORTED_MODULE_2__);
 /* harmony import */ var _TransferForm__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./TransferForm */ "./resources/js/components/TransferForm.jsx");
 /* harmony import */ var _TransferList__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./TransferList */ "./resources/js/components/TransferList.jsx");
+/* harmony import */ var react_currency_format__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! react-currency-format */ "./node_modules/react-currency-format/lib/currency-format.js");
+/* harmony import */ var react_currency_format__WEBPACK_IMPORTED_MODULE_5___default = /*#__PURE__*/__webpack_require__.n(react_currency_format__WEBPACK_IMPORTED_MODULE_5__);
 
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
@@ -49285,6 +51272,7 @@ function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || func
 
 
 
+
 var Example =
 /*#__PURE__*/
 function (_Component) {
@@ -49299,7 +51287,7 @@ function (_Component) {
     _this.state = {
       money: 0.0,
       transfers: [],
-      error: null,
+      error: '',
       form: {
         description: '',
         amount: '',
@@ -49368,7 +51356,6 @@ function (_Component) {
       this.setState({
         form: _objectSpread({}, this.state.form, _defineProperty({}, e.target.name, e.target.value))
       });
-      console.log(e.target.value);
     }
   }, {
     key: "handleDeleteClick",
@@ -49381,7 +51368,6 @@ function (_Component) {
           while (1) {
             switch (_context2.prev = _context2.next) {
               case 0:
-                console.log(transferId);
                 config = {
                   method: 'POST',
                   headers: {
@@ -49397,10 +51383,10 @@ function (_Component) {
                 })["catch"](function (error) {
                   return error;
                 });
-                _context2.next = 5;
+                _context2.next = 4;
                 return res;
 
-              case 5:
+              case 4:
                 data = _context2.sent;
 
                 if (data.success) {
@@ -49411,10 +51397,10 @@ function (_Component) {
                     money: this.state.money - transferAmount
                   });
                 } else {
-                  alert('Se ha producido un error');
+                  this.showError('Se ha producido un error');
                 }
 
-              case 7:
+              case 6:
               case "end":
                 return _context2.stop();
             }
@@ -49429,72 +51415,114 @@ function (_Component) {
       return handleDeleteClick;
     }()
   }, {
+    key: "validate",
+    value: function validate() {
+      var _this2 = this;
+
+      var amount = this.state.form.amount;
+      amount = Number(amount.replace(/[^0-9.-]+/g, ""));
+      console.log(amount);
+      console.log(this.state.form.amount);
+
+      if (amount > 999999) {
+        console.log(amount);
+        this.showError('El monto no puede ser mayor a $999,999');
+      } else if (amount < -99999) {
+        this.showError('El monto no puede ser menor a -$999,999');
+      } else if (this.state.form.description.length > 40) {
+        this.showError('La descripción no puede contener más de 40 caracteres');
+      } else if (this.state.form.description.length === 0) {
+        this.showError('La descripción es requerida');
+      } else if (this.state.form.amount.length === 0) {
+        this.showError('El monto es requerido');
+      } else {
+        this.setState({
+          form: _objectSpread({}, this.state.form, {
+            amount: amount
+          })
+        }, function () {
+          return console.log(_this2.state.form);
+        });
+        this.showError('');
+        return true;
+      }
+
+      return false;
+    }
+  }, {
     key: "handleSubmit",
     value: function () {
       var _handleSubmit = _asyncToGenerator(
       /*#__PURE__*/
       _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.mark(function _callee3(e) {
-        var config, res, data;
+        var body, config, res, data;
         return _babel_runtime_regenerator__WEBPACK_IMPORTED_MODULE_0___default.a.wrap(function _callee3$(_context3) {
           while (1) {
             switch (_context3.prev = _context3.next) {
               case 0:
                 e.preventDefault();
                 _context3.prev = 1;
+
+                if (!this.validate()) {
+                  _context3.next = 14;
+                  break;
+                }
+
+                console.log(this.state.form);
+                body = {
+                  description: this.state.form.description,
+                  amount: Number(this.state.form.amount.replace(/[^0-9.-]+/g, "")),
+                  wallet_id: 1
+                };
                 config = {
                   method: 'POST',
                   headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                   },
-                  body: JSON.stringify(this.state.form)
+                  body: JSON.stringify(body)
                 };
-                _context3.next = 5;
+                _context3.next = 8;
                 return fetch('/api/transfer/create', config).then(function (res) {
                   return res.ok ? res.json() : false;
                 })["catch"](function (error) {
                   return error;
                 });
 
-              case 5:
+              case 8:
                 res = _context3.sent;
-                _context3.next = 8;
+                _context3.next = 11;
                 return res;
 
-              case 8:
+              case 11:
                 data = _context3.sent;
                 console.log('data', data);
-
-                if (data) {
-                  this.setState({
-                    transfers: this.state.transfers.concat(data),
-                    money: this.state.money + parseInt(data.amount),
-                    form: {
-                      description: '',
-                      amount: '',
-                      wallet_id: 1
-                    }
-                  });
-                } else {
-                  alert('Se ha producido un error');
-                }
-
-                _context3.next = 16;
-                break;
-
-              case 13:
-                _context3.prev = 13;
-                _context3.t0 = _context3["catch"](1);
                 this.setState({
-                  error: _context3.t0
+                  transfers: this.state.transfers.concat(data),
+                  money: parseFloat(this.state.money) + parseFloat(data.amount),
+                  form: {
+                    description: '',
+                    amount: '',
+                    wallet_id: 1
+                  }
                 });
 
+              case 14:
+                _context3.next = 20;
+                break;
+
               case 16:
+                _context3.prev = 16;
+                _context3.t0 = _context3["catch"](1);
+                console.log('error', _context3.t0);
+                this.showError('No se ha podido registrar la transferencia.');
+
+              case 20:
               case "end":
                 return _context3.stop();
             }
           }
-        }, _callee3, this, [[1, 13]]);
+        }, _callee3, this, [[1, 16]]);
       }));
 
       function handleSubmit(_x3) {
@@ -49504,6 +51532,13 @@ function (_Component) {
       return handleSubmit;
     }()
   }, {
+    key: "showError",
+    value: function showError(error) {
+      this.setState({
+        error: error
+      });
+    }
+  }, {
     key: "render",
     value: function render() {
       return react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
@@ -49512,21 +51547,32 @@ function (_Component) {
         className: "row justify-content-center"
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
         className: "col-md-12 mt-5"
-      }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("p", {
+      }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
         className: "title"
-      }, "$ ", this.state.money)), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
+      }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(react_currency_format__WEBPACK_IMPORTED_MODULE_5___default.a, {
+        value: this.state.money,
+        displayType: 'text',
+        thousandSeparator: true,
+        prefix: '$',
+        renderText: function renderText(value) {
+          return react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", null, value);
+        }
+      }))), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
         className: "col-md-12"
-      }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(_TransferForm__WEBPACK_IMPORTED_MODULE_3__["default"], {
+      }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("em", {
+        className: "m-b-md"
+      }, "Nota: cualquier persona puede introducir o eliminar informaci\xF3n"), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(_TransferForm__WEBPACK_IMPORTED_MODULE_3__["default"], {
         form: this.state.form,
         onChange: this.handleChange,
         onSubmit: this.handleSubmit
-      }), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("em", {
-        className: "m-b-md"
-      }, "Nota: cualquier persona puede introducir o eliminar informaci\xF3n"))), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
+      }), this.state.error && react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
+        className: "mx-4"
+      }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("h5", {
+        className: "text-danger"
+      }, this.state.error)))), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
         className: "mt-5"
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(_TransferList__WEBPACK_IMPORTED_MODULE_4__["default"], {
         transfers: this.state.transfers,
-        onChange: this.handleChange,
         onDeleteClick: this.handleDeleteClick
       })));
     }
@@ -49554,6 +51600,9 @@ if (document.getElementById('example')) {
 __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var react_currency_format__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react-currency-format */ "./node_modules/react-currency-format/lib/currency-format.js");
+/* harmony import */ var react_currency_format__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react_currency_format__WEBPACK_IMPORTED_MODULE_1__);
+
 
 
 var TransferForm = function TransferForm(_ref) {
@@ -49570,6 +51619,8 @@ var TransferForm = function TransferForm(_ref) {
     className: "form-control",
     placeholder: "Description",
     name: "description",
+    maxLength: "40",
+    required: true,
     value: form.description,
     onChange: onChange
   })), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("div", {
@@ -49578,13 +51629,17 @@ var TransferForm = function TransferForm(_ref) {
     className: "input-group-prepend"
   }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("div", {
     className: "input-group-text"
-  }, "$")), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("input", {
-    type: "text",
-    className: "form-control",
+  }, "$")), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(react_currency_format__WEBPACK_IMPORTED_MODULE_1___default.a, {
+    max: "999999",
+    min: "-999999",
     name: "amount",
     placeholder: "Amount",
     value: form.amount,
-    onChange: onChange
+    className: "form-control",
+    required: true,
+    onChange: onChange,
+    thousandSeparator: true,
+    prefix: ''
   })), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("div", {
     className: "input-group mb-2"
   }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
@@ -49608,6 +51663,9 @@ var TransferForm = function TransferForm(_ref) {
 __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var react_currency_format__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react-currency-format */ "./node_modules/react-currency-format/lib/currency-format.js");
+/* harmony import */ var react_currency_format__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react_currency_format__WEBPACK_IMPORTED_MODULE_1__);
+
 
 
 var TransferList = function TransferList(_ref) {
@@ -49620,7 +51678,15 @@ var TransferList = function TransferList(_ref) {
       key: transfer.id
     }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", null, transfer.description), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", {
       className: transfer.amount >= 0 ? 'text-success' : 'text-danger'
-    }, transfer.amount), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
+    }, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement(react_currency_format__WEBPACK_IMPORTED_MODULE_1___default.a, {
+      value: transfer.amount,
+      displayType: 'text',
+      thousandSeparator: true,
+      prefix: '$',
+      renderText: function renderText(value) {
+        return react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("div", null, value);
+      }
+    })), react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("td", null, react__WEBPACK_IMPORTED_MODULE_0___default.a.createElement("button", {
       className: "btn btn-danger",
       onClick: function onClick(e) {
         return onDeleteClick(transfer.id, transfer.amount);
