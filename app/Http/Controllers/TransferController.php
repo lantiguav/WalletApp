@@ -28,7 +28,7 @@ class TransferController extends Controller
         try {
             $transfer = Transfer::where('id', $request->id)->FirstOrFail();
             $wallet = Wallet::where('id', $transfer->wallet_id)->firstOrFail();
-            dd($transfer);
+            // dd($transfer);
             $wallet->money = $wallet->money - $transfer->amount;
 
             $wallet->update();
