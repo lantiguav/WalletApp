@@ -68,7 +68,7 @@ export default class Example extends Component {
         
         let data = await res;
 
-        if(data){
+        if(data.success){
             this.setState({
                 transfers : this.state.transfers.filter(x => x.id != transferId),
                 money : this.state.money - transferAmount

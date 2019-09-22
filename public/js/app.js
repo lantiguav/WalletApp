@@ -49403,7 +49403,7 @@ function (_Component) {
               case 5:
                 data = _context2.sent;
 
-                if (data) {
+                if (data.success) {
                   this.setState({
                     transfers: this.state.transfers.filter(function (x) {
                       return x.id != transferId;

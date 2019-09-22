@@ -26,8 +26,9 @@ class TransferController extends Controller
 
     public function delete(Request $request){
         try {
-            $transfer = Transfer::find($request->id)->FirstOrFail();
-            $wallet = Wallet::find($transfer->wallet_id)->firstOrFail();
+            $transfer = Transfer::where('id', $request->id)->FirstOrFail();
+            $wallet = Wallet::where('id', $transfer->wallet_id)->firstOrFail();
+            dd($transfer);
             $wallet->money = $wallet->money - $transfer->amount;
 
             $wallet->update();
