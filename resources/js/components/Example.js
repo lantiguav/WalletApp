@@ -15,7 +15,7 @@ export default class Example extends Component {
             form: {
                 description : '',
                 amount : '',
-                wallet_id : 3
+                wallet_id : 1
             }
         }
 
