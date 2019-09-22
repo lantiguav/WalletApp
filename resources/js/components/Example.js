@@ -96,7 +96,6 @@ export default class Example extends Component {
                             .catch(error => error);
             let data = await res;
             console.log('data', data);
-
             if(data){
                 this.setState({
                     transfers : this.state.transfers.concat(data),
