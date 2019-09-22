@@ -119,14 +119,15 @@ export default class Example extends Component {
         return (
             <div className="container">
                 <div className="row justify-content-center">
-                    <div className="col-md-12 m-t-md">
+                    <div className="col-md-12 mt-5">
                         <p className="title">$ {this.state.money}</p>
                     </div>
                     <div className="col-md-12">
                         <TransferForm form={this.state.form} onChange={this.handleChange} onSubmit={this.handleSubmit}/>
+                        <em className="m-b-md">Nota: cualquier persona puede introducir o eliminar información</em>
                     </div>
                 </div>
-                <div className="m-t-md">
+                <div className="mt-5">
                     <TransferList transfers={this.state.transfers} onChange={this.handleChange} onDeleteClick={this.handleDeleteClick}/>
                 </div>
             </div>

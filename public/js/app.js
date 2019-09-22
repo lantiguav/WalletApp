@@ -49511,7 +49511,7 @@ function (_Component) {
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
         className: "row justify-content-center"
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
-        className: "col-md-12 m-t-md"
+        className: "col-md-12 mt-5"
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("p", {
         className: "title"
       }, "$ ", this.state.money)), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
@@ -49520,8 +49520,10 @@ function (_Component) {
         form: this.state.form,
         onChange: this.handleChange,
         onSubmit: this.handleSubmit
-      }))), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
-        className: "m-t-md"
+      }), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("em", {
+        className: "m-b-md"
+      }, "Nota: cualquier persona puede introducir o eliminar informaci\xF3n"))), react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement("div", {
+        className: "mt-5"
       }, react__WEBPACK_IMPORTED_MODULE_1___default.a.createElement(_TransferList__WEBPACK_IMPORTED_MODULE_4__["default"], {
         transfers: this.state.transfers,
         onChange: this.handleChange,
