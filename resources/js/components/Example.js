@@ -72,7 +72,7 @@ export default class Example extends Component {
                 money : this.state.money - transferAmount
             });
         } else {
-            this.showError('Se ha producido un error');
+            this.showError('An error has occurred');
         }
     }
 
@@ -84,16 +84,16 @@ export default class Example extends Component {
 
         if(amount > 999999){
             console.log(amount)
-            this.showError('El monto no puede ser mayor a $999,999')
+            this.showError('Amount cannot exceed $999,999')
         } 
         else if(amount < -99999){
-            this.showError('El monto no puede ser menor a -$999,999')
+            this.showError('Amount cannot be less than -$999,999')
         } else if(this.state.form.description.length > 40){
-            this.showError('La descripción no puede contener más de 40 caracteres')
+            this.showError("Description's lenght cannot exceed 40 characters")
         } else if(this.state.form.description.length === 0){
-            this.showError('La descripción es requerida')
+            this.showError('Description required')
         } else if(this.state.form.amount.length === 0){
-            this.showError('El monto es requerido')
+            this.showError('Amount required')
         } else {
             this.setState({
                 form :{
@@ -152,7 +152,7 @@ export default class Example extends Component {
             }
         } catch (error) {
             console.log('error', error)
-            this.showError('No se ha podido registrar la transferencia.')
+            this.showError('The transfer could not be registered.')
         }
     }
 
@@ -170,7 +170,7 @@ export default class Example extends Component {
                         </div>
                     </div>
                     <div className="col-md-12">
-                        <em className="m-b-md">Nota: cualquier persona puede introducir o eliminar información</em>
+                        <em className="m-b-md">Note: anyone can enter or delete information</em>
                         <TransferForm form={this.state.form} onChange={this.handleChange} onSubmit={this.handleSubmit}/>
 
                         {
