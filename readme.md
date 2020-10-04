@@ -1,6 +1,6 @@
 # WalletApp
 
-A simple web app to record your income and expenses, built with
+A simple web app to record your income and expenses, built with:
 
 - PHP Laravel
 - React JS
